@@ -1,33 +1,31 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const Memory = require('../models/Memory');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
-// Multer config for image upload
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '..', 'uploads'));
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+// Cloudinary config (credentials should be in .env)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only image files are allowed'), false);
-  }
-};
+// Configure Multer for Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'legacylens',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+    transformation: [{ width: 1200, height: 1200, crop: 'limit' }]
+  },
+});
 
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
 // Get all memories for the logged-in user
@@ -67,11 +65,8 @@ router.post('/', auth, upload.single('image'), async (req, res) => {
   try {
     const { title, content, mood, tags, isCapsule, unlockDate } = req.body;
 
-    // Build image URL if file was uploaded
-    let mediaUrl = '';
-    if (req.file) {
-      mediaUrl = `/uploads/${req.file.filename}`;
-    }
+    // Use Cloudinary URL if file was uploaded
+    const mediaUrl = req.file ? req.file.path : '';
 
     const memory = new Memory({
       user: req.user.id,
@@ -113,6 +108,8 @@ router.delete('/:id', auth, async (req, res) => {
     if (!memory) return res.status(404).json({ message: 'Memory not found' });
     if (memory.user.toString() !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
 
+    // If there was a cloudinary image, we might want to delete it here too
+    // For now, just delete the record
     await Memory.findByIdAndDelete(req.params.id);
     res.json({ message: 'Memory deleted' });
   } catch (err) {
