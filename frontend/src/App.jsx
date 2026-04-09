@@ -56,7 +56,7 @@ function AnimatedRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router basename={import.meta.env.BASE_URL}>
         <div style={{ minHeight: '100vh', background: 'var(--color-bg)' }}>
           <Navbar />
           <AnimatedRoutes />
